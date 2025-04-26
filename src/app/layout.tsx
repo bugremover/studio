@@ -22,7 +22,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.className}> {/* Apply font class to html */}
+    <html lang="en" className={inter.className}>
       <body className="antialiased"> {/* antialiased is often default but good to keep */}
         {children}
         <Toaster />

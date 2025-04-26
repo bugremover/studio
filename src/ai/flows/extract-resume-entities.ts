@@ -33,6 +33,7 @@ export async function extractResumeEntities(input: ExtractResumeEntitiesInput): 
 
 const prompt = ai.definePrompt({
   name: 'extractResumeEntitiesPrompt',
+  model: 'googleai/gemini-2.0-flash', // Explicitly use Gemini model
   input: {
     schema: z.object({
        resumeDataUri: z
@@ -45,7 +46,7 @@ const prompt = ai.definePrompt({
   output: {
     schema: ExtractResumeEntitiesOutputSchema,
   },
-  prompt: `You are an AI assistant specialized in extracting information from resumes provided as documents.
+  prompt: `You are an AI assistant specialized in extracting information from resumes provided as documents using the Gemini model.
 
   Given the following resume document, extract the key skills, work experiences, and educational experiences.
   Return the information in the specified structured JSON format.
@@ -65,7 +66,6 @@ const extractResumeEntitiesFlow = ai.defineFlow<
   name: 'extractResumeEntitiesFlow',
   inputSchema: ExtractResumeEntitiesInputSchema,
   outputSchema: ExtractResumeEntitiesOutputSchema,
-  // Removed incorrect model configuration - relies on global default or prompt-level settings
 }, async input => {
   try {
     const {output} = await prompt(input);
@@ -84,7 +84,10 @@ const extractResumeEntitiesFlow = ai.defineFlow<
     if (error instanceof Error && error.message.includes('UNSUPPORTED_MEDIA_TYPE')) {
          throw new Error('Unsupported file type provided. Please use PDF, DOC, or DOCX.');
     }
+    // Pass through specific AI generation errors
+    if (error instanceof Error && error.message.includes('AI failed')) {
+        throw error;
+    }
     throw new Error('Failed to process resume file for entity extraction.');
   }
 });
-

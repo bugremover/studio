@@ -21,7 +21,7 @@ import {
 import { Input } from '@/components/ui/input'; // Import Input component
 import { useToast } from '@/hooks/use-toast';
 import type { ExtractResumeEntitiesOutput } from '@/ai/flows/extract-resume-entities';
-import type { JobFitScoringOutput } from '@/ai/flows/job-fit-scoring';
+import type { JobFitScoringOutput } from '@/ai/flows/job-fit-scoring'; // This type now includes suggestions
 import { analyzeResumeAction } from './actions';
 import ResultsDisplay from '@/components/results-display';
 import { Label } from '@/components/ui/label'; // Import Label
@@ -36,9 +36,10 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>;
 
+// Update AnalysisResult to use the extended JobFitScoringOutput type
 type AnalysisResult = {
   entities: ExtractResumeEntitiesOutput;
-  scoring: JobFitScoringOutput;
+  scoring: JobFitScoringOutput; // Now includes fitScore, justification, suggestedRoles, improvementSuggestions
 };
 
 export default function Home() {
@@ -227,4 +228,3 @@ export default function Home() {
     </main>
   );
 }
-

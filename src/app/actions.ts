@@ -11,9 +11,10 @@ const actionInputSchema = z.object({
 
 type ActionInput = z.infer<typeof actionInputSchema>;
 
+// ActionResult now directly includes the full JobFitScoringOutput type
 type ActionResult = {
     entities: ExtractResumeEntitiesOutput;
-    scoring: JobFitScoringOutput;
+    scoring: JobFitScoringOutput; // This now includes fitScore, justification, suggestedRoles, and improvementSuggestions
 };
 
 export async function analyzeResumeAction(input: ActionInput): Promise<ActionResult> {
@@ -29,9 +30,17 @@ export async function analyzeResumeAction(input: ActionInput): Promise<ActionRes
       }),
     ]);
 
+    // Ensure arrays are present, even if empty, to prevent frontend errors
+    const finalScoringResult: JobFitScoringOutput = {
+        ...scoringResult,
+        suggestedRoles: scoringResult.suggestedRoles ?? [],
+        improvementSuggestions: scoringResult.improvementSuggestions ?? [],
+    };
+
+
     return {
       entities: entitiesResult,
-      scoring: scoringResult,
+      scoring: finalScoringResult,
     };
   } catch (error) {
     console.error('Error in analyzeResumeAction:', error);

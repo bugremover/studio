@@ -9,7 +9,7 @@ import { FileUp, Loader2, X, Bot, ClipboardEdit } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'; // Added CardDescription
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Form,
   FormControl,
@@ -31,16 +31,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 // --- Analysis Schemas and Types ---
 const analysisFormSchema = z.object({
-  // resumeText is now optional as we can't process PDF/Word on the client easily
-  resumeText: z.string().optional(),
+  resumeDataUri: z.string().min(1, 'Please upload a resume file.').startsWith('data:', { message: 'Invalid file data format.' }),
   jobDescription: z
     .string()
     .min(50, 'Job description must be at least 50 characters.'),
-  // Add a field to track if a file is selected, since resumeText won't be populated
-  isFileSelected: z.boolean().default(false),
-}).refine(data => data.isFileSelected, { // Refine based on file selection
-    message: 'Please upload a resume file (.pdf, .doc, .docx).',
-    path: ['isFileSelected'], // Specify the path for the error
 });
 type AnalysisFormData = z.infer<typeof analysisFormSchema>;
 // Updated AnalysisResult type to include potential ID
@@ -73,6 +67,7 @@ export default function Home() {
   const [isAnalysisLoading, setIsAnalysisLoading] = React.useState(false);
   const [resumeFileName, setResumeFileName] = React.useState<string | null>(null);
   const analysisFileInputRef = React.useRef<HTMLInputElement>(null);
+  const [isFileReading, setIsFileReading] = React.useState(false); // State for file reading
 
   // Generation State
   const [generationResult, setGenerationResult] = React.useState<GenerationResult | null>(null);
@@ -84,9 +79,8 @@ export default function Home() {
   const analysisForm = useForm<AnalysisFormData>({
     resolver: zodResolver(analysisFormSchema),
     defaultValues: {
-      resumeText: '', // Initialize as empty string or undefined
+      resumeDataUri: '',
       jobDescription: '',
-      isFileSelected: false, // Initialize file selection state
     },
     mode: 'onChange', // Validate on change for better UX
   });
@@ -126,17 +120,29 @@ export default function Home() {
 
       // Check if it's a supported PDF/Word format
       if (fileType === 'application/pdf' || fileType === 'application/msword' || fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || fileName.endsWith('.pdf') || fileName.endsWith('.doc') || fileName.endsWith('.docx') ) {
-        // Handle PDF and Word files - Currently show a warning as client-side parsing is complex
-        setResumeFileName(file.name);
-        analysisForm.setValue('resumeText', 'File content is not processed on the client for PDF/Word.', { shouldValidate: false }); // Set placeholder text or empty
-        analysisForm.setValue('isFileSelected', true, { shouldValidate: true }); // Indicate a file is selected
-        analysisForm.clearErrors('resumeText'); // Clear any text-related errors
-         toast({
-            title: 'File Type Not Processed Directly',
-            description: 'PDF and Word document parsing is not yet implemented in this demo. The file name is captured, but content extraction requires backend processing (not included).',
-            variant: 'default', // Use default variant for informational message
-            duration: 6000, // Show for longer
-         });
+          setIsFileReading(true); // Start file reading indicator
+          setResumeFileName(file.name);
+          analysisForm.setValue('resumeDataUri', '', { shouldValidate: false }); // Clear previous data URI
+
+          const reader = new FileReader();
+          reader.onloadend = () => {
+              const base64String = reader.result as string;
+              analysisForm.setValue('resumeDataUri', base64String, { shouldValidate: true }); // Set Base64 data URI and validate
+              analysisForm.clearErrors('resumeDataUri');
+              setIsFileReading(false); // Stop file reading indicator
+          };
+          reader.onerror = () => {
+              console.error('File reading error');
+              toast({
+                 title: 'File Read Error',
+                 description: 'Could not read the selected file.',
+                 variant: 'destructive',
+              });
+              clearFile();
+              setIsFileReading(false); // Stop file reading indicator on error
+          }
+          reader.readAsDataURL(file); // Read file as Data URL
+
       } else {
           // Handle other unsupported file types
            toast({
@@ -156,59 +162,33 @@ export default function Home() {
   const clearFile = () => {
     if (analysisFileInputRef.current) analysisFileInputRef.current.value = '';
     setResumeFileName(null);
-    analysisForm.resetField('resumeText', { defaultValue: ''}); // Reset text field
-    analysisForm.setValue('isFileSelected', false, { shouldValidate: true }); // Reset file selection state and validate
-    analysisForm.clearErrors('resumeText'); // Clear any previous text errors
-    analysisForm.clearErrors('isFileSelected'); // Clear file selection errors
+    analysisForm.resetField('resumeDataUri', { defaultValue: '' }); // Reset data URI field
+    analysisForm.clearErrors('resumeDataUri'); // Clear any previous errors
   };
 
   const onAnalysisSubmit: SubmitHandler<AnalysisFormData> = async (data) => {
-    // Explicitly check isFileSelected before calling the action
-     if (!data.isFileSelected) {
-        analysisForm.setError('isFileSelected', { type: 'manual', message: 'Please upload a resume file (.pdf, .doc, .docx).' });
+    if (!data.resumeDataUri) {
+        analysisForm.setError('resumeDataUri', { type: 'manual', message: 'Please upload a resume file.' });
         toast({ title: 'Missing Resume File', description: 'Please upload a valid resume (.pdf, .doc, .docx) before analyzing.', variant: 'destructive' });
         return;
     }
 
-    // Warn the user that the content isn't actually being sent (in this demo version)
-    toast({
-        title: 'Analysis Limitation',
-        description: 'Note: In this demo, the content of PDF/Word files is not sent for analysis. The process will continue with placeholder data or might fail.',
-        variant: 'default',
-        duration: 7000,
-    });
-
     setIsAnalysisLoading(true);
     setAnalysisResult(null);
     try {
-      // IMPORTANT: Since PDF/Word content isn't extracted client-side,
-      // resumeText will be empty or placeholder. The AI flows need
-      // to be adapted to handle file uploads directly (e.g., via a backend)
-      // or the analyzeResumeAction needs to be updated to accept a file object/path
-      // For this demo, we'll pass the potentially empty/placeholder resumeText.
-      // The backend flows (extractResumeEntities, jobFitScoring) would likely fail
-      // without actual text content.
-      const analysisInput = {
-        resumeText: data.resumeText || `Placeholder for: ${resumeFileName}`, // Send placeholder if empty
+      const result = await analyzeResumeAction({
+        resumeDataUri: data.resumeDataUri,
         jobDescription: data.jobDescription,
-      };
-
-      // @ts-ignore - Temporarily ignore type mismatch due to lack of actual text
-      const result = await analyzeResumeAction(analysisInput);
+      });
       setAnalysisResult(result);
        toast({
-          title: 'Analysis Initiated (Demo)',
-          description: `Analysis process started. Results shown may be inaccurate due to file content limitations. ${result.analysisId ? 'Saved placeholder to database.' : 'Failed to save to database.'}`,
+          title: 'Analysis Complete',
+          description: `Resume analyzed successfully. ${result.analysisId ? 'Saved to database.' : 'Failed to save to database.'}`,
           variant: result.analysisId ? 'default' : 'destructive',
        });
     } catch (error: any) {
       console.error('Analysis failed:', error);
-      // Check if it's a Zod error from the refinement
-      if (error instanceof z.ZodError && error.issues.some(issue => issue.path.includes('isFileSelected'))) {
-         toast({ title: 'Invalid Input', description: error.issues.find(issue => issue.path.includes('isFileSelected'))?.message || 'Resume file is required.', variant: 'destructive' });
-      } else {
-         toast({ title: 'Analysis Error', description: error.message || 'Failed to analyze the resume. Please check the inputs and try again.', variant: 'destructive' });
-      }
+       toast({ title: 'Analysis Error', description: error.message || 'Failed to analyze the resume. Please check the inputs and try again.', variant: 'destructive' });
     } finally {
       setIsAnalysisLoading(false);
     }
@@ -233,6 +213,8 @@ export default function Home() {
       setIsGenerationLoading(false);
     }
   };
+
+  const isAnalyzeButtonDisabled = isAnalysisLoading || isFileReading || !analysisForm.formState.isValid;
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gradient-to-br from-background to-muted/30 dark:from-background dark:to-secondary/20">
@@ -260,53 +242,43 @@ export default function Home() {
                     <Card className="shadow-lg border border-border/50 rounded-xl">
                     <CardHeader>
                         <CardTitle className="text-xl">Analyze Existing Resume</CardTitle>
-                         <CardDescription>Upload your resume (.pdf, .doc, .docx) and paste a job description. Note: File content analysis is not fully supported in this demo.</CardDescription>
+                         <CardDescription>Upload your resume (.pdf, .doc, .docx) and paste a job description to get AI insights.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <Form {...analysisForm}>
                         <form onSubmit={analysisForm.handleSubmit(onAnalysisSubmit)} className="space-y-6">
-                           {/* Hidden field for isFileSelected state */}
-                           <FormField
-                                control={analysisForm.control} name="isFileSelected"
+                            <FormField
+                                control={analysisForm.control} name="resumeDataUri"
                                 render={({ field }) => (
-                                    <FormItem className="!hidden">
-                                        <FormControl>
-                                             <Input type="checkbox" {...field} checked={field.value} />
-                                        </FormControl>
-                                        <FormMessage />
+                                    <FormItem>
+                                    <FormLabel>Resume File (.pdf, .doc, .docx)</FormLabel>
+                                    <FormControl>
+                                        <div className="flex items-center space-x-2">
+                                            <Input
+                                                id="resume-file" type="file" ref={analysisFileInputRef} className="hidden"
+                                                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                                onChange={handleFileChange}
+                                                disabled={isFileReading} // Disable while reading
+                                            />
+                                            <Button type="button" variant="outline" size="sm" onClick={() => analysisFileInputRef.current?.click()} className="rounded-lg" disabled={isFileReading}>
+                                                {isFileReading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Reading...</> : <><FileUp className="mr-2 h-4 w-4" /> Upload File</>}
+                                            </Button>
+                                            {resumeFileName && (
+                                                <div className="flex items-center space-x-1 rounded-lg border bg-secondary px-2 py-1 text-sm text-secondary-foreground">
+                                                    <span className="max-w-[200px] truncate">{resumeFileName}</span>
+                                                    <Button type="button" variant="ghost" size="icon" className="h-5 w-5 rounded-full" onClick={clearFile} disabled={isFileReading}>
+                                                        <X className="h-3 w-3" /><span className="sr-only">Remove file</span>
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </FormControl>
+                                     <FormMessage />
+                                     {/* Hidden Input to store the data URI */}
+                                     <Input {...field} type="hidden" />
                                     </FormItem>
                                 )}
-                           />
-                            <FormItem>
-                            <FormLabel>Resume File (.pdf, .doc, .docx)</FormLabel>
-                            <FormControl>
-                                <div className="flex items-center space-x-2">
-                                    <Input
-                                        id="resume-file" type="file" ref={analysisFileInputRef} className="hidden"
-                                        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" // Updated accept types
-                                        onChange={handleFileChange}
-                                    />
-                                    <Button type="button" variant="outline" size="sm" onClick={() => analysisFileInputRef.current?.click()} className="rounded-lg">
-                                    <FileUp className="mr-2 h-4 w-4" /> Upload File
-                                    </Button>
-                                    {resumeFileName && (
-                                        <div className="flex items-center space-x-1 rounded-lg border bg-secondary px-2 py-1 text-sm text-secondary-foreground">
-                                            <span className="max-w-[200px] truncate">{resumeFileName}</span>
-                                            <Button type="button" variant="ghost" size="icon" className="h-5 w-5 rounded-full" onClick={clearFile}>
-                                                <X className="h-3 w-3" /><span className="sr-only">Remove file</span>
-                                            </Button>
-                                        </div>
-                                    )}
-                                </div>
-                            </FormControl>
-                             {/* Display validation message for file selection */}
-                               <FormMessage>{analysisForm.formState.errors.isFileSelected?.message}</FormMessage>
-                               {/* Hidden textarea for storing placeholder text - not actual content */}
-                                <FormField
-                                    control={analysisForm.control} name="resumeText"
-                                    render={({ field }) => ( <Textarea {...field} className="!hidden" readOnly /> )}
-                                />
-                            </FormItem>
+                            />
 
                             <FormField
                             control={analysisForm.control} name="jobDescription"
@@ -320,7 +292,7 @@ export default function Home() {
                                 </FormItem>
                             )}
                             />
-                            <Button type="submit" className="w-full rounded-lg shadow-md hover:shadow-lg transition-shadow" disabled={isAnalysisLoading || !analysisForm.formState.isValid}>
+                            <Button type="submit" className="w-full rounded-lg shadow-md hover:shadow-lg transition-shadow" disabled={isAnalyzeButtonDisabled}>
                             {isAnalysisLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Analyzing...</> : 'Analyze Resume'}
                             </Button>
                         </form>

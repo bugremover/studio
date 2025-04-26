@@ -13,9 +13,10 @@ const generationCollection = collection(db, 'generatedResumes');
 
 // --- Types for Firestore documents ---
 interface AnalysisDocumentData {
-  // Consider hashing or omitting large text fields in production
-  // resumeText: string;
-  // jobDescription: string;
+  // Omitting resumeDataUri by default for Firestore brevity/cost/security.
+  // Store it only if absolutely necessary and be mindful of Firestore limits.
+  // resumeDataUri?: string;
+  jobDescription?: string; // Store the job description used for analysis
   entities: ExtractResumeEntitiesOutput;
   scoring: JobFitScoringOutput;
   createdAt: ReturnType<typeof serverTimestamp>;
@@ -31,15 +32,16 @@ interface GenerationDocumentData {
 
 /**
  * Saves resume analysis results to Firestore.
- * @param data - The analysis data including entities and scoring.
+ * @param data - The analysis data including entities, scoring, and job description.
  */
 export async function saveAnalysis(
   data: AnalysisDocumentData
 ): Promise<string | null> {
   try {
     // Prepare data, ensure createdAt is set
-    const docData = { ...data, createdAt: serverTimestamp() };
-    const docRef = await addDoc(analysisCollection, docData);
+    // Explicitly exclude resumeDataUri if present unless intended
+    const { /* resumeDataUri, */ ...docDataToSave } = data;
+    const docRef = await addDoc(analysisCollection, { ...docDataToSave, createdAt: serverTimestamp() });
     console.log('Analysis saved to Firestore with ID:', docRef.id);
     return docRef.id;
   } catch (error) {

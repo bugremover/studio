@@ -9,7 +9,7 @@ import { saveAnalysis, saveGeneratedResume } from '@/services/firestore'; // Imp
 
 // --- Analysis Action ---
 const analysisActionInputSchema = z.object({
-  resumeText: z.string().min(1, 'Resume text cannot be empty.'), // Keep resume text for AI processing
+  resumeDataUri: z.string().min(1, 'Resume file data is required.').startsWith('data:', { message: 'Invalid file data format.' }),
   jobDescription: z.string().min(1, 'Job description cannot be empty.'),
 });
 type AnalysisActionInput = z.infer<typeof analysisActionInputSchema>;
@@ -24,10 +24,11 @@ export async function analyzeResumeAction(input: AnalysisActionInput): Promise<A
   const validatedInput = analysisActionInputSchema.parse(input);
 
   try {
+    // Call AI flows with the data URI
     const [entitiesResult, scoringResult] = await Promise.all([
-      extractResumeEntities({ resumeText: validatedInput.resumeText }),
+      extractResumeEntities({ resumeDataUri: validatedInput.resumeDataUri }),
       jobFitScoring({
-        resumeText: validatedInput.resumeText,
+        resumeDataUri: validatedInput.resumeDataUri,
         jobDescription: validatedInput.jobDescription,
       }),
     ]);
@@ -38,17 +39,18 @@ export async function analyzeResumeAction(input: AnalysisActionInput): Promise<A
         improvementSuggestions: scoringResult.improvementSuggestions ?? [],
     };
 
-    // Save to Firestore (without large text fields for now)
+    // Save to Firestore
     const analysisId = await saveAnalysis({
+      // Omit resumeDataUri from Firestore for brevity/security if needed
+      // resumeDataUri: validatedInput.resumeDataUri, // Decide if you want to store the full file data
+      jobDescription: validatedInput.jobDescription, // Store job description
       entities: entitiesResult,
       scoring: finalScoringResult,
-      // Omitting resumeText and jobDescription for Firestore brevity
       createdAt: new Date() as any, // Placeholder, serverTimestamp added in service
     });
 
     if (!analysisId) {
         console.warn('Failed to save analysis to Firestore.');
-        // Decide how to handle this - maybe return without ID or throw specific error
     }
 
     return {
@@ -58,11 +60,14 @@ export async function analyzeResumeAction(input: AnalysisActionInput): Promise<A
     };
   } catch (error) {
     console.error('Error in analyzeResumeAction:', error);
-    // Consider more specific error handling based on where the error occurred (AI vs. Firestore)
     if (error instanceof z.ZodError) {
       throw new Error(`Invalid input: ${error.errors.map(e => e.message).join(', ')}`);
     }
-    throw new Error('Failed to analyze resume.');
+    // Check if error message indicates unsupported file type (this might come from the Genkit flows)
+    if (error instanceof Error && error.message.includes('Unsupported file type')) {
+        throw new Error('Unsupported file type. Please upload a PDF, DOC, or DOCX file.');
+    }
+    throw new Error('Failed to analyze resume. Check file format and content.');
   }
 }
 
@@ -99,7 +104,6 @@ export async function generateResumeAction(input: GenerationActionInput): Promis
 
         if (!generationId) {
             console.warn('Failed to save generated resume to Firestore.');
-             // Decide how to handle this
         }
 
         return {

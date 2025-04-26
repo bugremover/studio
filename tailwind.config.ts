@@ -70,7 +70,7 @@ export default {
         DEFAULT: {
           css: {
             '--tw-prose-body': theme('colors.foreground'),
-            '--tw-prose-headings': theme('colors.primary'),
+            '--tw-prose-headings': theme('colors.primary.DEFAULT'), // Use primary default
             '--tw-prose-lead': theme('colors.muted.foreground'),
             '--tw-prose-links': theme('colors.accent.DEFAULT'),
             '--tw-prose-bold': theme('colors.foreground'),
@@ -80,13 +80,14 @@ export default {
             '--tw-prose-quotes': theme('colors.foreground'),
             '--tw-prose-quote-borders': theme('colors.border'),
             '--tw-prose-captions': theme('colors.muted.foreground'),
-            '--tw-prose-code': theme('colors.foreground'),
+            '--tw-prose-code': theme('colors.foreground'), // Code blocks
             '--tw-prose-pre-code': theme('colors.card.foreground'),
-            '--tw-prose-pre-bg': theme('colors.card.DEFAULT'),
+            '--tw-prose-pre-bg': theme('colors.secondary.DEFAULT'), // Use secondary for code bg
             '--tw-prose-th-borders': theme('colors.border'),
             '--tw-prose-td-borders': theme('colors.border'),
+             // --- Dark Mode ---
             '--tw-prose-invert-body': theme('colors.foreground'),
-            '--tw-prose-invert-headings': theme('colors.primary'),
+            '--tw-prose-invert-headings': theme('colors.primary.DEFAULT'), // Use primary default
             '--tw-prose-invert-lead': theme('colors.muted.foreground'),
             '--tw-prose-invert-links': theme('colors.accent.DEFAULT'),
             '--tw-prose-invert-bold': theme('colors.foreground'),
@@ -96,9 +97,9 @@ export default {
             '--tw-prose-invert-quotes': theme('colors.foreground'),
             '--tw-prose-invert-quote-borders': theme('colors.border'),
             '--tw-prose-invert-captions': theme('colors.muted.foreground'),
-            '--tw-prose-invert-code': theme('colors.foreground'),
+            '--tw-prose-invert-code': theme('colors.foreground'), // Code blocks
             '--tw-prose-invert-pre-code': theme('colors.card.foreground'),
-            '--tw-prose-invert-pre-bg': theme('colors.card.DEFAULT'),
+            '--tw-prose-invert-pre-bg': theme('colors.secondary.DEFAULT'), // Use secondary for code bg
             '--tw-prose-invert-th-borders': theme('colors.border'),
             '--tw-prose-invert-td-borders': theme('colors.border'),
           },

@@ -1,24 +1,25 @@
+
 'use server';
 
 import { z } from 'zod';
 import { extractResumeEntities, type ExtractResumeEntitiesInput, type ExtractResumeEntitiesOutput } from '@/ai/flows/extract-resume-entities';
 import { jobFitScoring, type JobFitScoringInput, type JobFitScoringOutput } from '@/ai/flows/job-fit-scoring';
-import { generateResume, type GenerateResumeInput, type GenerateResumeOutput } from '@/ai/flows/generate-resume'; // Import new flow
+import { generateResume, type GenerateResumeInput, type GenerateResumeOutput } from '@/ai/flows/generate-resume';
+import { saveAnalysis, saveGeneratedResume } from '@/services/firestore'; // Import Firestore service
 
-// Schema for analysis action
+// --- Analysis Action ---
 const analysisActionInputSchema = z.object({
-  resumeText: z.string(),
-  jobDescription: z.string(),
+  resumeText: z.string().min(1, 'Resume text cannot be empty.'), // Keep resume text for AI processing
+  jobDescription: z.string().min(1, 'Job description cannot be empty.'),
 });
 type AnalysisActionInput = z.infer<typeof analysisActionInputSchema>;
 
-// ActionResult for analysis
 type AnalysisActionResult = {
     entities: ExtractResumeEntitiesOutput;
     scoring: JobFitScoringOutput;
+    analysisId: string | null; // Add ID for reference if needed
 };
 
-// Analysis Action Function
 export async function analyzeResumeAction(input: AnalysisActionInput): Promise<AnalysisActionResult> {
   const validatedInput = analysisActionInputSchema.parse(input);
 
@@ -37,18 +38,36 @@ export async function analyzeResumeAction(input: AnalysisActionInput): Promise<A
         improvementSuggestions: scoringResult.improvementSuggestions ?? [],
     };
 
+    // Save to Firestore (without large text fields for now)
+    const analysisId = await saveAnalysis({
+      entities: entitiesResult,
+      scoring: finalScoringResult,
+      // Omitting resumeText and jobDescription for Firestore brevity
+      createdAt: new Date() as any, // Placeholder, serverTimestamp added in service
+    });
+
+    if (!analysisId) {
+        console.warn('Failed to save analysis to Firestore.');
+        // Decide how to handle this - maybe return without ID or throw specific error
+    }
+
     return {
       entities: entitiesResult,
       scoring: finalScoringResult,
+      analysisId: analysisId,
     };
   } catch (error) {
     console.error('Error in analyzeResumeAction:', error);
+    // Consider more specific error handling based on where the error occurred (AI vs. Firestore)
+    if (error instanceof z.ZodError) {
+      throw new Error(`Invalid input: ${error.errors.map(e => e.message).join(', ')}`);
+    }
     throw new Error('Failed to analyze resume.');
   }
 }
 
 
-// Schema for generation action (matches GenerateResumeInput)
+// --- Generation Action ---
 const generationActionInputSchema = z.object({
   fullName: z.string().min(1, 'Full name is required.'),
   contactInfo: z.string().min(1, 'Contact information is required.'),
@@ -60,18 +79,38 @@ const generationActionInputSchema = z.object({
 });
 type GenerationActionInput = z.infer<typeof generationActionInputSchema>;
 
-// ActionResult for generation
-type GenerationActionResult = GenerateResumeOutput;
+type GenerationActionResult = {
+    resumeText: string;
+    generationId: string | null; // Add ID for reference if needed
+};
 
-// Generation Action Function
 export async function generateResumeAction(input: GenerationActionInput): Promise<GenerationActionResult> {
     const validatedInput = generationActionInputSchema.parse(input);
 
     try {
         const result = await generateResume(validatedInput);
-        return result;
+
+        // Save to Firestore
+        const generationId = await saveGeneratedResume({
+            input: validatedInput,
+            output: result,
+            createdAt: new Date() as any, // Placeholder, serverTimestamp added in service
+        });
+
+        if (!generationId) {
+            console.warn('Failed to save generated resume to Firestore.');
+             // Decide how to handle this
+        }
+
+        return {
+            ...result,
+            generationId: generationId,
+        };
     } catch (error) {
         console.error('Error in generateResumeAction:', error);
+         if (error instanceof z.ZodError) {
+            throw new Error(`Invalid input: ${error.errors.map(e => e.message).join(', ')}`);
+        }
         throw new Error('Failed to generate resume.');
     }
 }

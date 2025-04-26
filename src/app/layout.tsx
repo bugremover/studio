@@ -1,21 +1,19 @@
+
 import type {Metadata} from 'next';
-import {Geist, Geist_Mono} from 'next/font/google';
+import { Inter } from 'next/font/google'; // Import Inter font
 import './globals.css';
-import { Toaster } from "@/components/ui/toaster"; // Import Toaster
+import { Toaster } from "@/components/ui/toaster";
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
+// Configure Inter font
+const inter = Inter({
   subsets: ['latin'],
-});
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
+  variable: '--font-inter', // Optional: if you want to use it as a CSS variable
 });
 
 export const metadata: Metadata = {
-  title: 'Resume Insights', // Update title
-  description: 'AI-Powered Resume Analyzer', // Update description
+  title: 'Resume Insights AI - Analyze & Generate Resumes',
+  description: 'Leverage AI to analyze your resume against job descriptions, get improvement suggestions, find suitable roles, and generate professional resumes.',
+  keywords: 'resume analyzer, resume generator, AI resume, job fit, career advice, resume builder, ATS checker',
 };
 
 export default function RootLayout({
@@ -24,10 +22,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+    <html lang="en" className={inter.className}> {/* Apply font class to html */}
+      <body className="antialiased"> {/* antialiased is often default but good to keep */}
         {children}
-        <Toaster /> {/* Add Toaster */}
+        <Toaster />
       </body>
     </html>
   );

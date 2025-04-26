@@ -35,39 +35,51 @@ export async function analyzeResumeAction(input: AnalysisActionInput): Promise<A
 
     const finalScoringResult: JobFitScoringOutput = {
         ...scoringResult,
+        fitScore: scoringResult.fitScore ?? 0, // Ensure defaults are set
+        justification: scoringResult.justification ?? "Analysis could not be completed.",
         suggestedRoles: scoringResult.suggestedRoles ?? [],
         improvementSuggestions: scoringResult.improvementSuggestions ?? [],
     };
 
+     const finalEntitiesResult: ExtractResumeEntitiesOutput = {
+        skills: entitiesResult.skills ?? [],
+        experience: entitiesResult.experience ?? [],
+        education: entitiesResult.education ?? [],
+     };
+
+
     // Save to Firestore
     const analysisId = await saveAnalysis({
       // Omit resumeDataUri from Firestore for brevity/security if needed
-      // resumeDataUri: validatedInput.resumeDataUri, // Decide if you want to store the full file data
       jobDescription: validatedInput.jobDescription, // Store job description
-      entities: entitiesResult,
+      entities: finalEntitiesResult,
       scoring: finalScoringResult,
       createdAt: new Date() as any, // Placeholder, serverTimestamp added in service
     });
 
     if (!analysisId) {
         console.warn('Failed to save analysis to Firestore.');
+        // Optionally throw an error or return a specific status if saving is critical
     }
 
     return {
-      entities: entitiesResult,
+      entities: finalEntitiesResult,
       scoring: finalScoringResult,
       analysisId: analysisId,
     };
   } catch (error) {
-    console.error('Error in analyzeResumeAction:', error);
+    console.error('Error in analyzeResumeAction:', error); // Log the actual error for debugging
     if (error instanceof z.ZodError) {
+      // Handle Zod validation errors
       throw new Error(`Invalid input: ${error.errors.map(e => e.message).join(', ')}`);
     }
-    // Check if error message indicates unsupported file type (this might come from the Genkit flows)
-    if (error instanceof Error && error.message.includes('Unsupported file type')) {
-        throw new Error('Unsupported file type. Please upload a PDF, DOC, or DOCX file.');
+    if (error instanceof Error) {
+      // Propagate the error message from the flows or other operations.
+      // Specific messages like "Unsupported file type..." or "Failed to process..." will be passed through.
+      throw new Error(error.message || 'An unexpected error occurred during analysis.');
     }
-    throw new Error('Failed to analyze resume. Check file format and content.');
+    // Fallback for non-Error exceptions (less common)
+    throw new Error('An unknown error occurred during analysis.');
   }
 }
 
@@ -95,6 +107,10 @@ export async function generateResumeAction(input: GenerationActionInput): Promis
     try {
         const result = await generateResume(validatedInput);
 
+         if (!result || !result.resumeText) {
+            throw new Error('AI failed to generate resume content.');
+        }
+
         // Save to Firestore
         const generationId = await saveGeneratedResume({
             input: validatedInput,
@@ -104,6 +120,7 @@ export async function generateResumeAction(input: GenerationActionInput): Promis
 
         if (!generationId) {
             console.warn('Failed to save generated resume to Firestore.');
+            // Optionally throw an error or return a specific status if saving is critical
         }
 
         return {
@@ -115,6 +132,10 @@ export async function generateResumeAction(input: GenerationActionInput): Promis
          if (error instanceof z.ZodError) {
             throw new Error(`Invalid input: ${error.errors.map(e => e.message).join(', ')}`);
         }
-        throw new Error('Failed to generate resume.');
+         if (error instanceof Error) {
+             // Propagate specific error messages
+             throw new Error(error.message || 'An unexpected error occurred during resume generation.');
+         }
+        throw new Error('Failed to generate resume due to an unknown error.');
     }
 }

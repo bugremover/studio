@@ -31,14 +31,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 // --- Analysis Schemas and Types ---
 const analysisFormSchema = z.object({
-  // Resume text can be empty initially, validated on submit after file processing
+  // resumeText is now optional as we can't process PDF/Word on the client easily
   resumeText: z.string().optional(),
   jobDescription: z
     .string()
     .min(50, 'Job description must be at least 50 characters.'),
-}).refine(data => data.resumeText && data.resumeText.length >= 50, { // Add refinement for resumeText check on submit
-    message: 'Resume content must be extracted and be at least 50 characters.',
-    path: ['resumeText'], // Specify the path for the error
+  // Add a field to track if a file is selected, since resumeText won't be populated
+  isFileSelected: z.boolean().default(false),
+}).refine(data => data.isFileSelected, { // Refine based on file selection
+    message: 'Please upload a resume file (.pdf, .doc, .docx).',
+    path: ['isFileSelected'], // Specify the path for the error
 });
 type AnalysisFormData = z.infer<typeof analysisFormSchema>;
 // Updated AnalysisResult type to include potential ID
@@ -84,8 +86,9 @@ export default function Home() {
     defaultValues: {
       resumeText: '', // Initialize as empty string or undefined
       jobDescription: '',
+      isFileSelected: false, // Initialize file selection state
     },
-    mode: 'onChange', // Validate on change for better UX (except for resumeText initially)
+    mode: 'onChange', // Validate on change for better UX
   });
 
   // Generation Form
@@ -121,50 +124,27 @@ export default function Home() {
       const fileType = file.type;
       const fileName = file.name.toLowerCase();
 
-      // Check if it's a supported text-based format or PDF/Word
-      if (fileType === 'text/plain' || fileName.endsWith('.txt') || fileName.endsWith('.md')) {
-        setResumeFileName(file.name);
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const text = e.target?.result as string;
-          // Basic check for empty/very short content
-          if (!text || text.trim().length < 50) {
-              toast({
-                  title: 'Invalid Content',
-                  description: 'The file seems empty or too short. Please upload a valid resume.',
-                  variant: 'destructive',
-              });
-              clearFile(); // Clear file if content is invalid
-              return;
-          }
-          analysisForm.setValue('resumeText', text, { shouldValidate: true }); // Validate after setting value
-        };
-        reader.onerror = (e) => {
-          console.error('File reading error:', e);
-          toast({ title: 'Error Reading File', description: 'Could not read the selected file.', variant: 'destructive' });
-          clearFile();
-        };
-        reader.readAsText(file); // Read as text for supported formats
-      } else if (fileType === 'application/pdf' || fileType === 'application/msword' || fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || fileName.endsWith('.pdf') || fileName.endsWith('.doc') || fileName.endsWith('.docx') ) {
+      // Check if it's a supported PDF/Word format
+      if (fileType === 'application/pdf' || fileType === 'application/msword' || fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || fileName.endsWith('.pdf') || fileName.endsWith('.doc') || fileName.endsWith('.docx') ) {
         // Handle PDF and Word files - Currently show a warning as client-side parsing is complex
         setResumeFileName(file.name);
-        analysisForm.setValue('resumeText', '', { shouldValidate: false }); // Clear text field if unsupported is chosen
-        analysisForm.clearErrors('resumeText'); // Clear previous errors
+        analysisForm.setValue('resumeText', 'File content is not processed on the client for PDF/Word.', { shouldValidate: false }); // Set placeholder text or empty
+        analysisForm.setValue('isFileSelected', true, { shouldValidate: true }); // Indicate a file is selected
+        analysisForm.clearErrors('resumeText'); // Clear any text-related errors
          toast({
-            title: 'File Type Not Processed',
-            description: 'PDF and Word document parsing is not yet supported in this demo. Please upload a .txt or .md file.',
-            variant: 'destructive', // Use destructive or warning variant
+            title: 'File Type Not Processed Directly',
+            description: 'PDF and Word document parsing is not yet implemented in this demo. The file name is captured, but content extraction requires backend processing (not included).',
+            variant: 'default', // Use default variant for informational message
+            duration: 6000, // Show for longer
          });
-         // Optionally clear the file input here if you don't want the name displayed
-         // clearFile();
       } else {
           // Handle other unsupported file types
            toast({
               title: 'Invalid File Type',
-              description: 'Please upload a .txt, .md, .pdf, or Word document file.',
+              description: 'Please upload a .pdf, .doc, or .docx file.',
               variant: 'destructive',
            });
-           clearFile(); // Clear if totally unsupported type
+           clearFile(); // Clear if unsupported type
            return;
       }
 
@@ -176,34 +156,56 @@ export default function Home() {
   const clearFile = () => {
     if (analysisFileInputRef.current) analysisFileInputRef.current.value = '';
     setResumeFileName(null);
-    analysisForm.resetField('resumeText', { defaultValue: ''}); // Reset field properly
-     analysisForm.clearErrors('resumeText'); // Clear any previous errors
+    analysisForm.resetField('resumeText', { defaultValue: ''}); // Reset text field
+    analysisForm.setValue('isFileSelected', false, { shouldValidate: true }); // Reset file selection state and validate
+    analysisForm.clearErrors('resumeText'); // Clear any previous text errors
+    analysisForm.clearErrors('isFileSelected'); // Clear file selection errors
   };
 
   const onAnalysisSubmit: SubmitHandler<AnalysisFormData> = async (data) => {
-    // Explicitly check resumeText before calling the action, even though zod refine handles it
-     if (!data.resumeText || data.resumeText.length < 50) {
-        analysisForm.setError('resumeText', { type: 'manual', message: 'Please upload a valid .txt or .md resume file before analyzing.' });
-        toast({ title: 'Missing or Invalid Resume', description: 'Please ensure a valid resume (.txt or .md) is uploaded and processed.', variant: 'destructive' });
+    // Explicitly check isFileSelected before calling the action
+     if (!data.isFileSelected) {
+        analysisForm.setError('isFileSelected', { type: 'manual', message: 'Please upload a resume file (.pdf, .doc, .docx).' });
+        toast({ title: 'Missing Resume File', description: 'Please upload a valid resume (.pdf, .doc, .docx) before analyzing.', variant: 'destructive' });
         return;
     }
+
+    // Warn the user that the content isn't actually being sent (in this demo version)
+    toast({
+        title: 'Analysis Limitation',
+        description: 'Note: In this demo, the content of PDF/Word files is not sent for analysis. The process will continue with placeholder data or might fail.',
+        variant: 'default',
+        duration: 7000,
+    });
 
     setIsAnalysisLoading(true);
     setAnalysisResult(null);
     try {
-      // Type assertion might be needed if resumeText is optional in schema but required here
-      const result = await analyzeResumeAction(data as Required<AnalysisFormData>);
+      // IMPORTANT: Since PDF/Word content isn't extracted client-side,
+      // resumeText will be empty or placeholder. The AI flows need
+      // to be adapted to handle file uploads directly (e.g., via a backend)
+      // or the analyzeResumeAction needs to be updated to accept a file object/path
+      // For this demo, we'll pass the potentially empty/placeholder resumeText.
+      // The backend flows (extractResumeEntities, jobFitScoring) would likely fail
+      // without actual text content.
+      const analysisInput = {
+        resumeText: data.resumeText || `Placeholder for: ${resumeFileName}`, // Send placeholder if empty
+        jobDescription: data.jobDescription,
+      };
+
+      // @ts-ignore - Temporarily ignore type mismatch due to lack of actual text
+      const result = await analyzeResumeAction(analysisInput);
       setAnalysisResult(result);
        toast({
-          title: 'Analysis Complete',
-          description: `Resume analysis finished. ${result.analysisId ? 'Saved to database.' : 'Failed to save to database.'}`,
+          title: 'Analysis Initiated (Demo)',
+          description: `Analysis process started. Results shown may be inaccurate due to file content limitations. ${result.analysisId ? 'Saved placeholder to database.' : 'Failed to save to database.'}`,
           variant: result.analysisId ? 'default' : 'destructive',
        });
     } catch (error: any) {
       console.error('Analysis failed:', error);
       // Check if it's a Zod error from the refinement
-      if (error instanceof z.ZodError && error.issues.some(issue => issue.path.includes('resumeText'))) {
-         toast({ title: 'Invalid Resume Data', description: error.issues.find(issue => issue.path.includes('resumeText'))?.message || 'Resume content is invalid.', variant: 'destructive' });
+      if (error instanceof z.ZodError && error.issues.some(issue => issue.path.includes('isFileSelected'))) {
+         toast({ title: 'Invalid Input', description: error.issues.find(issue => issue.path.includes('isFileSelected'))?.message || 'Resume file is required.', variant: 'destructive' });
       } else {
          toast({ title: 'Analysis Error', description: error.message || 'Failed to analyze the resume. Please check the inputs and try again.', variant: 'destructive' });
       }
@@ -258,18 +260,30 @@ export default function Home() {
                     <Card className="shadow-lg border border-border/50 rounded-xl">
                     <CardHeader>
                         <CardTitle className="text-xl">Analyze Existing Resume</CardTitle>
-                         <CardDescription>Upload your resume (.txt, .md, .pdf, .doc, .docx) and paste a job description. Note: Only .txt/.md files are processed currently.</CardDescription>
+                         <CardDescription>Upload your resume (.pdf, .doc, .docx) and paste a job description. Note: File content analysis is not fully supported in this demo.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <Form {...analysisForm}>
                         <form onSubmit={analysisForm.handleSubmit(onAnalysisSubmit)} className="space-y-6">
+                           {/* Hidden field for isFileSelected state */}
+                           <FormField
+                                control={analysisForm.control} name="isFileSelected"
+                                render={({ field }) => (
+                                    <FormItem className="!hidden">
+                                        <FormControl>
+                                             <Input type="checkbox" {...field} checked={field.value} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                           />
                             <FormItem>
-                            <FormLabel>Resume File (.txt, .md, .pdf, .doc, .docx)</FormLabel>
+                            <FormLabel>Resume File (.pdf, .doc, .docx)</FormLabel>
                             <FormControl>
                                 <div className="flex items-center space-x-2">
                                     <Input
                                         id="resume-file" type="file" ref={analysisFileInputRef} className="hidden"
-                                        accept=".txt,.md,.pdf,.doc,.docx,text/plain,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" // Updated accept types
+                                        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" // Updated accept types
                                         onChange={handleFileChange}
                                     />
                                     <Button type="button" variant="outline" size="sm" onClick={() => analysisFileInputRef.current?.click()} className="rounded-lg">
@@ -285,12 +299,12 @@ export default function Home() {
                                     )}
                                 </div>
                             </FormControl>
-                             {/* Display validation message directly */}
-                               <FormMessage>{analysisForm.formState.errors.resumeText?.message}</FormMessage>
-                               {/* Hidden textarea for storing file content - could also store in state */}
+                             {/* Display validation message for file selection */}
+                               <FormMessage>{analysisForm.formState.errors.isFileSelected?.message}</FormMessage>
+                               {/* Hidden textarea for storing placeholder text - not actual content */}
                                 <FormField
                                     control={analysisForm.control} name="resumeText"
-                                    render={({ field }) => ( <Textarea {...field} className="!hidden" /> )}
+                                    render={({ field }) => ( <Textarea {...field} className="!hidden" readOnly /> )}
                                 />
                             </FormItem>
 
